@@ -1,0 +1,975 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#010305">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23010305'/%3E%3Cpath d='M32 43V18M32 25l-8-8M32 32l8-8M19 49h26' stroke='%23d9bb83' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <meta name="description" content="ZekangLi-Zico Christmas Tree 的浏览器 WebGL 版本：一棵会旋转的粒子圣诞树。">
+  <title>Merry Christmas · Zico</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f8f5ec;
+      --muted: rgba(226, 235, 242, 0.58);
+      --line: rgba(222, 235, 243, 0.22);
+      --gold: #d9bb83;
+      --night: #010305;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--night);
+    }
+
+    body {
+      color: var(--ink);
+      font-family: "Avenir Next", Avenir, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    button {
+      color: inherit;
+      font: inherit;
+    }
+
+    #experience {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      isolation: isolate;
+      background:
+        radial-gradient(ellipse at 50% 54%, rgba(27, 67, 91, 0.2), transparent 45%),
+        radial-gradient(ellipse at 50% 100%, rgba(18, 38, 54, 0.2), transparent 52%),
+        #010305;
+    }
+
+    #experience::before {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      content: "";
+      background:
+        linear-gradient(90deg, rgba(0, 0, 0, 0.18), transparent 18%, transparent 82%, rgba(0, 0, 0, 0.2)),
+        linear-gradient(0deg, rgba(0, 0, 0, 0.44), transparent 20%, transparent 84%, rgba(0, 0, 0, 0.2));
+    }
+
+    #experience::after {
+      position: absolute;
+      inset: -40%;
+      z-index: 4;
+      pointer-events: none;
+      content: "";
+      opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
+      animation: grain 0.22s steps(2) infinite;
+    }
+
+    @keyframes grain {
+      0% { transform: translate(0, 0); }
+      25% { transform: translate(2%, -1%); }
+      50% { transform: translate(-1%, 2%); }
+      75% { transform: translate(1%, 1%); }
+      100% { transform: translate(-2%, -1%); }
+    }
+
+    #tree-canvas,
+    #snow-canvas {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #tree-canvas {
+      z-index: 0;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #tree-canvas.is-dragging {
+      cursor: grabbing;
+    }
+
+    #snow-canvas {
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .interface {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    .topbar {
+      position: absolute;
+      top: clamp(20px, 3.5vw, 52px);
+      right: clamp(20px, 3.5vw, 56px);
+      left: clamp(20px, 3.5vw, 56px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      color: rgba(240, 244, 246, 0.7);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+    }
+
+    .brand-mark {
+      position: relative;
+      width: 19px;
+      height: 19px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+    }
+
+    .brand-mark::before,
+    .brand-mark::after {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      content: "";
+      background: var(--gold);
+      transform: translate(-50%, -50%);
+    }
+
+    .brand-mark::before {
+      width: 1px;
+      height: 9px;
+    }
+
+    .brand-mark::after {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      box-shadow: 0 0 12px rgba(217, 187, 131, 0.75);
+    }
+
+    .controls {
+      display: flex;
+      gap: 9px;
+      pointer-events: auto;
+    }
+
+    .icon-button {
+      display: grid;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      outline: none;
+      background: rgba(4, 10, 15, 0.24);
+      cursor: pointer;
+      place-items: center;
+      transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+    }
+
+    .icon-button:hover {
+      border-color: rgba(217, 187, 131, 0.58);
+      background: rgba(217, 187, 131, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .icon-button:focus-visible {
+      outline: 1px solid var(--gold);
+      outline-offset: 4px;
+    }
+
+    .icon-button svg {
+      width: 15px;
+      height: 15px;
+      overflow: visible;
+      fill: none;
+      stroke: rgba(244, 247, 248, 0.82);
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.45;
+    }
+
+    .hero-copy {
+      position: absolute;
+      top: 33%;
+      left: clamp(24px, 4.4vw, 82px);
+      transform: translateY(-2px);
+    }
+
+    .eyebrow {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin: 0 0 14px;
+      color: var(--gold);
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: 0.36em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      width: 28px;
+      height: 1px;
+      content: "";
+      background: currentColor;
+      opacity: 0.65;
+    }
+
+    .greeting {
+      max-width: 570px;
+      margin: 0;
+      color: var(--ink);
+      font-family: "Bodoni 72", Didot, "Baskerville Old Face", Baskerville, Georgia, serif;
+      font-size: clamp(42px, 5vw, 82px);
+      font-style: italic;
+      font-weight: 400;
+      letter-spacing: -0.055em;
+      line-height: 0.94;
+      text-shadow: 0 0 32px rgba(188, 226, 245, 0.13);
+    }
+
+    .dedication {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 18px;
+      color: rgba(235, 240, 243, 0.62);
+      font-size: 10px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+    }
+
+    .dedication::before {
+      width: 18px;
+      height: 1px;
+      content: "";
+      background: var(--gold);
+      opacity: 0.5;
+    }
+
+    #name {
+      max-width: 260px;
+      overflow: hidden;
+      color: rgba(255, 248, 232, 0.9);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .footer {
+      position: absolute;
+      right: clamp(20px, 3.5vw, 56px);
+      bottom: clamp(20px, 3.5vw, 44px);
+      left: clamp(20px, 3.5vw, 56px);
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 9px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 14px rgba(0, 0, 0, 0.85);
+    }
+
+    .credit {
+      display: grid;
+      gap: 5px;
+    }
+
+    .credit strong {
+      color: rgba(235, 240, 243, 0.72);
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: 0.27em;
+    }
+
+    .hint {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      transition: opacity 600ms ease;
+    }
+
+    .hint::before {
+      width: 22px;
+      height: 22px;
+      border: 1px solid rgba(226, 235, 242, 0.2);
+      border-radius: 50%;
+      content: "↔";
+      color: rgba(235, 240, 243, 0.65);
+      font-size: 10px;
+      letter-spacing: 0;
+      line-height: 20px;
+      text-align: center;
+    }
+
+    .hint.is-hidden {
+      opacity: 0;
+    }
+
+    .fallback {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      z-index: 5;
+      width: min(86vw, 460px);
+      padding: 24px;
+      border: 1px solid var(--line);
+      background: rgba(2, 6, 10, 0.86);
+      font-size: 13px;
+      line-height: 1.7;
+      text-align: center;
+      transform: translate(-50%, -50%);
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 700px) {
+      .brand {
+        font-size: 8px;
+      }
+
+      .hero-copy {
+        top: 14%;
+        left: 24px;
+      }
+
+      .eyebrow {
+        margin-bottom: 9px;
+        font-size: 8px;
+      }
+
+      .greeting {
+        max-width: 290px;
+        font-size: clamp(34px, 11.4vw, 58px);
+      }
+
+      .dedication {
+        margin-top: 12px;
+      }
+
+      .footer {
+        font-size: 8px;
+      }
+
+      .credit span {
+        display: none;
+      }
+
+      .hint {
+        letter-spacing: 0.14em;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #experience::after {
+        animation: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="experience" aria-label="旋转的粒子圣诞树">
+    <canvas id="tree-canvas" aria-label="可通过拖动旋转的三维圣诞树"></canvas>
+    <canvas id="snow-canvas" aria-hidden="true"></canvas>
+
+    <section class="interface">
+      <header class="topbar">
+        <div class="brand" aria-label="Zico Christmas Tree">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>Zico / Christmas Tree</span>
+        </div>
+        <div class="controls">
+          <button class="icon-button" id="pause-button" type="button" aria-label="暂停动画" aria-pressed="false" title="暂停 / 继续（空格）">
+            <svg id="pause-icon" viewBox="0 0 18 18" aria-hidden="true">
+              <path d="M6 4.2v9.6M12 4.2v9.6"></path>
+            </svg>
+          </button>
+          <button class="icon-button" id="fullscreen-button" type="button" aria-label="进入全屏" title="全屏（F）">
+            <svg viewBox="0 0 18 18" aria-hidden="true">
+              <path d="M7 3.5H3.5V7M11 3.5h3.5V7M7 14.5H3.5V11M11 14.5h3.5V11"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="hero-copy">
+        <p class="eyebrow">A little winter ritual</p>
+        <h1 class="greeting">Merry Christmas</h1>
+        <p class="dedication">For <span id="name">647</span></p>
+      </section>
+
+      <footer class="footer">
+        <div class="credit">
+          <strong>WebGL Edition</strong>
+          <span>Adapted from ZekangLi-Zico / Christmas-Tree</span>
+        </div>
+        <div class="hint" id="hint">拖动旋转 · 空格暂停</div>
+      </footer>
+    </section>
+
+    <div class="fallback" id="fallback" hidden>
+      当前浏览器无法启动 WebGL。请使用最新版 Chrome、Edge 或 Firefox 打开此页面。
+    </div>
+    <noscript>
+      <div class="fallback">此页面需要启用 JavaScript 才能显示圣诞树动画。</div>
+    </noscript>
+    <p class="sr-only">这是一棵由约五万五千个粒子组成的旋转圣诞树。</p>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const BASE_WIDTH = 1600;
+      const BASE_HEIGHT = 900;
+      const TREE_HEIGHT = 12;
+      const CAMERA_DISTANCE = 13;
+      const CAMERA_HEIGHT = 6;
+      const CAMERA_PITCH = -0.25;
+      const TAU = Math.PI * 2;
+
+      const TREE_POINTS = 50000;
+      const GROUND_POINTS = 4000;
+      const STAR_POINTS = 1200;
+      const HEART_POINTS = 1000;
+      const SNOW_FLAKES = 10;
+
+      const treeCanvas = document.querySelector("#tree-canvas");
+      const snowCanvas = document.querySelector("#snow-canvas");
+      const pauseButton = document.querySelector("#pause-button");
+      const pauseIcon = document.querySelector("#pause-icon");
+      const fullscreenButton = document.querySelector("#fullscreen-button");
+      const fallback = document.querySelector("#fallback");
+      const hint = document.querySelector("#hint");
+      const nameNode = document.querySelector("#name");
+      const reducesMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      const requestedName = new URLSearchParams(window.location.search).get("name");
+      if (requestedName && requestedName.trim()) {
+        nameNode.textContent = Array.from(requestedName.trim()).slice(0, 32).join("");
+      }
+
+      let seed = 0x5eed647;
+      function random() {
+        seed |= 0;
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = seed;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      }
+
+      function randomInt(min, max) {
+        return Math.floor(random() * (max - min + 1)) + min;
+      }
+
+      function gaussian(mean, deviation) {
+        const u = Math.max(random(), Number.EPSILON);
+        const v = random();
+        return mean + deviation * Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * v);
+      }
+
+      function writePoint(data, offset, x, y, z, color) {
+        data[offset] = x;
+        data[offset + 1] = y;
+        data[offset + 2] = z;
+        data[offset + 3] = color[0] / 255;
+        data[offset + 4] = color[1] / 255;
+        data[offset + 5] = color[2] / 255;
+      }
+
+      function createScene() {
+        const total = TREE_POINTS + GROUND_POINTS + STAR_POINTS + HEART_POINTS;
+        const data = new Float32Array(total * 6);
+        let offset = 0;
+
+        const spiralCount = Math.floor(TREE_POINTS * 0.7);
+
+        for (let index = 0; index < spiralCount; index += 1) {
+          const u = random();
+          const h = Math.pow(u, 1.6);
+          const y = TREE_HEIGHT * h + 0.2;
+          let baseRadius = Math.pow(1 - h, 1.1) * 3.2;
+          const branchWave = Math.max(0, Math.sin((h * 5.8 + 0.15) * TAU));
+          baseRadius *= 1 + 0.65 * branchWave;
+
+          const angle = u * 9 * TAU + (random() * 0.44 - 0.22);
+          const radius = baseRadius * (0.85 + random() * 0.23);
+          const x = Math.cos(angle) * radius;
+          const z = Math.sin(angle) * radius;
+
+          const midBoost = Math.max(0.15, 1 - Math.abs(h - 0.55) * 1.5);
+          let color = [
+            255,
+            Math.min(255, 155 + Math.floor(90 * midBoost) + randomInt(-15, 20)),
+            Math.min(255, 185 + Math.floor(70 * midBoost) + randomInt(-15, 35))
+          ];
+
+          if (random() < 0.08) {
+            color = [255, 255 - randomInt(0, 35), 230 + randomInt(0, 25)];
+          }
+
+          writePoint(data, offset, x, y, z, color);
+          offset += 6;
+        }
+
+        for (let index = spiralCount; index < TREE_POINTS; index += 1) {
+          const h = Math.pow(random(), 1.9);
+          const y = TREE_HEIGHT * h + 0.2 + (random() * 0.16 - 0.08);
+          let baseRadius = Math.pow(1 - h, 1.1) * 4.3;
+          const branchWave = Math.max(0, Math.sin((h * 5.8 + 0.15) * TAU));
+          baseRadius *= 1 + 0.65 * branchWave;
+
+          const radius = baseRadius * Math.sqrt(random());
+          const angle = random() * TAU;
+          const x = Math.cos(angle) * radius + (random() * 0.16 - 0.08);
+          const z = Math.sin(angle) * radius + (random() * 0.16 - 0.08);
+          writePoint(data, offset, x, y, z, [255, randomInt(165, 225), randomInt(190, 250)]);
+          offset += 6;
+        }
+
+        const rings = [4.6, 6, 7.4, 8.8, 10.2, 11.4];
+        for (let index = 0; index < GROUND_POINTS; index += 1) {
+          const ring = rings[Math.floor(random() * rings.length)];
+          const radius = gaussian(ring, 0.3);
+          const theta = random() * TAU;
+          const shade = random() < 0.15 ? randomInt(235, 255) : randomInt(190, 235);
+          writePoint(
+            data,
+            offset,
+            Math.cos(theta) * radius,
+            -0.25,
+            Math.sin(theta) * radius,
+            [shade, shade, 255]
+          );
+          offset += 6;
+        }
+
+        for (let index = 0; index < STAR_POINTS; index += 1) {
+          const shade = randomInt(215, 255);
+          writePoint(
+            data,
+            offset,
+            36 * random() - 18,
+            3 + 15 * random(),
+            36 * random() - 18,
+            [shade, shade, 255]
+          );
+          offset += 6;
+        }
+
+        let heartCount = 0;
+        while (heartCount < HEART_POINTS) {
+          const x2 = 2.6 * random() - 1.3;
+          const y2 = 2.8 * random() - 1.4;
+          const implicit = Math.pow(x2 * x2 + y2 * y2 - 1, 3) - x2 * x2 * y2 * y2 * y2;
+          if (implicit > 0) continue;
+
+          const worldX = x2 * 0.9 * 0.8;
+          const worldY = TREE_HEIGHT + 0.05 + (y2 + 1) * 0.9 * 0.5;
+          const worldZ = random() * 0.36 - 0.18;
+          const distance = Math.hypot(x2, y2);
+          const factor = Math.max(0.35, 1.15 - 0.5 * distance);
+          const green = Math.max(120, Math.min(255, Math.floor(130 * factor + 80)));
+          const blue = Math.max(120, Math.min(255, Math.floor(190 * factor + 70)));
+          writePoint(data, offset, worldX, worldY, worldZ, [255, green, blue]);
+          offset += 6;
+          heartCount += 1;
+        }
+
+        return data;
+      }
+
+      const vertexShaderSource = `
+        attribute vec3 aPosition;
+        attribute vec3 aColor;
+
+        uniform vec2 uViewport;
+        uniform float uScale;
+        uniform float uAngle;
+        uniform float uGlowPass;
+        uniform float uOffsetY;
+
+        varying vec3 vColor;
+
+        void main() {
+          float cosAngle = cos(uAngle);
+          float sinAngle = sin(uAngle);
+          float rotatedX = aPosition.x * cosAngle - aPosition.z * sinAngle;
+          float rotatedZ = aPosition.x * sinAngle + aPosition.z * cosAngle;
+
+          float cosPitch = cos(-0.25);
+          float sinPitch = sin(-0.25);
+          float cameraY = aPosition.y * cosPitch - rotatedZ * sinPitch;
+          float depth = aPosition.y * sinPitch + rotatedZ * cosPitch + 13.0;
+          cameraY -= 6.0;
+
+          float perspective = (900.0 * 0.63) / max(depth, 0.1);
+          vec2 projected = vec2(rotatedX * perspective, -cameraY * perspective);
+          vec2 screen = uViewport * 0.5 + projected * uScale;
+          screen.y += uOffsetY;
+
+          gl_Position = vec4(
+            (screen.x / uViewport.x) * 2.0 - 1.0,
+            1.0 - (screen.y / uViewport.y) * 2.0,
+            depth / 50.0,
+            1.0
+          );
+
+          float size = max(1.0, 3.6 - depth * 0.13) * uScale;
+          gl_PointSize = size * mix(2.7, 1.0, uGlowPass);
+
+          vColor = aColor;
+        }
+      `;
+
+      const fragmentShaderSource = `
+        precision highp float;
+
+        uniform float uGlowPass;
+        varying vec3 vColor;
+
+        void main() {
+          vec2 centered = gl_PointCoord * 2.0 - 1.0;
+          float distanceToCenter = length(centered);
+          if (distanceToCenter > 1.0) discard;
+
+          float halo = pow(max(0.0, 1.0 - distanceToCenter), 2.2);
+          float core = smoothstep(1.0, 0.18, distanceToCenter);
+          float glowAlpha = halo * 0.11;
+          float solidAlpha = smoothstep(1.0, 0.7, distanceToCenter);
+
+          if (uGlowPass < 0.5) {
+            gl_FragColor = vec4(vColor * (0.42 + halo * 0.38), glowAlpha);
+          } else {
+            gl_FragColor = vec4(vColor * (0.78 + core * 0.38), solidAlpha);
+          }
+        }
+      `;
+
+      function compileShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const message = gl.getShaderInfoLog(shader);
+          gl.deleteShader(shader);
+          throw new Error(message || "Unable to compile shader");
+        }
+        return shader;
+      }
+
+      function createProgram(gl) {
+        const program = gl.createProgram();
+        gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource));
+        gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource));
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          throw new Error(gl.getProgramInfoLog(program) || "Unable to link WebGL program");
+        }
+        return program;
+      }
+
+      const gl = treeCanvas.getContext("webgl", {
+        alpha: false,
+        antialias: true,
+        depth: true,
+        powerPreference: "high-performance",
+        premultipliedAlpha: false
+      });
+
+      if (!gl) {
+        fallback.hidden = false;
+        return;
+      }
+
+      let scene;
+      let program;
+      let buffer;
+      let locations;
+
+      try {
+        scene = createScene();
+        program = createProgram(gl);
+        buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, scene, gl.STATIC_DRAW);
+
+        locations = {
+          position: gl.getAttribLocation(program, "aPosition"),
+          color: gl.getAttribLocation(program, "aColor"),
+          viewport: gl.getUniformLocation(program, "uViewport"),
+          scale: gl.getUniformLocation(program, "uScale"),
+          angle: gl.getUniformLocation(program, "uAngle"),
+          glow: gl.getUniformLocation(program, "uGlowPass"),
+          offsetY: gl.getUniformLocation(program, "uOffsetY")
+        };
+
+        gl.useProgram(program);
+        gl.enableVertexAttribArray(locations.position);
+        gl.enableVertexAttribArray(locations.color);
+        gl.vertexAttribPointer(locations.position, 3, gl.FLOAT, false, 24, 0);
+        gl.vertexAttribPointer(locations.color, 3, gl.FLOAT, false, 24, 12);
+        gl.enable(gl.BLEND);
+      } catch (error) {
+        console.error(error);
+        fallback.hidden = false;
+        return;
+      }
+
+      const snowContext = snowCanvas.getContext("2d");
+      const flakes = [];
+      const snowRandom = (() => {
+        let snowSeed = 0xdec25;
+        return () => {
+          snowSeed = (snowSeed * 1664525 + 1013904223) >>> 0;
+          return snowSeed / 4294967296;
+        };
+      })();
+
+      function resetFlake(flake, firstRun = false) {
+        flake.x = snowRandom();
+        flake.y = firstRun ? snowRandom() : -0.08 - snowRandom() * 0.08;
+        flake.radius = 0.008 + snowRandom() * 0.013;
+        flake.speed = 0.028 + snowRandom() * 0.03;
+        flake.drift = (snowRandom() - 0.5) * 0.018;
+        flake.phase = snowRandom() * TAU;
+        flake.alpha = 0.4 + snowRandom() * 0.42;
+      }
+
+      for (let index = 0; index < SNOW_FLAKES; index += 1) {
+        const flake = {};
+        resetFlake(flake, true);
+        flakes.push(flake);
+      }
+
+      let viewportWidth = 1;
+      let viewportHeight = 1;
+      let pixelRatio = 1;
+      let rotation = 0;
+      let dragOffset = 0;
+      let dragVelocity = 0;
+      let isPaused = false;
+      let isDragging = false;
+      let pointerX = 0;
+      let lastFrameTime = performance.now();
+      let hintDismissed = false;
+
+      function resize() {
+        const width = Math.max(1, window.innerWidth);
+        const height = Math.max(1, window.innerHeight);
+        pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        viewportWidth = Math.round(width * pixelRatio);
+        viewportHeight = Math.round(height * pixelRatio);
+
+        treeCanvas.width = viewportWidth;
+        treeCanvas.height = viewportHeight;
+        snowCanvas.width = viewportWidth;
+        snowCanvas.height = viewportHeight;
+
+        gl.viewport(0, 0, viewportWidth, viewportHeight);
+        snowContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      }
+
+      function drawSnow(delta) {
+        const width = viewportWidth / pixelRatio;
+        const height = viewportHeight / pixelRatio;
+        snowContext.clearRect(0, 0, width, height);
+
+        for (const flake of flakes) {
+          if (!isPaused) {
+            flake.y += flake.speed * delta;
+            flake.x += flake.drift * delta;
+          }
+
+          if (flake.y > 1.08) {
+            resetFlake(flake);
+            continue;
+          }
+
+          if (flake.x < -0.08) flake.x = 1.08;
+          if (flake.x > 1.08) flake.x = -0.08;
+
+          const x = flake.x * width;
+          const y = flake.y * height;
+          const radius = Math.max(6, flake.radius * Math.min(width, height));
+          const fade = Math.min(1, flake.y * 8, (1.08 - flake.y) * 5.5);
+          const alpha = flake.alpha * Math.max(0, fade);
+          const gradient = snowContext.createRadialGradient(x, y, 0, x, y, radius);
+          gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+          gradient.addColorStop(0.12, `rgba(255, 255, 255, ${alpha * 0.82})`);
+          gradient.addColorStop(0.38, `rgba(231, 245, 255, ${alpha * 0.25})`);
+          gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+          snowContext.fillStyle = gradient;
+          snowContext.beginPath();
+          snowContext.arc(x, y, radius, 0, TAU);
+          snowContext.fill();
+        }
+      }
+
+      function drawScene() {
+        gl.clearColor(0.0039, 0.0118, 0.0196, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.useProgram(program);
+
+        const heightScale = (viewportHeight / BASE_HEIGHT);
+        const isCompact = viewportWidth < 650 * pixelRatio;
+        const compactScale = isCompact ? viewportWidth / 560 : Number.POSITIVE_INFINITY;
+        const scale = Math.min(heightScale, compactScale);
+        const verticalOffset = isCompact ? viewportHeight * 0.1 : 0;
+
+        gl.uniform2f(locations.viewport, viewportWidth, viewportHeight);
+        gl.uniform1f(locations.scale, scale);
+        gl.uniform1f(locations.angle, rotation + dragOffset);
+        gl.uniform1f(locations.offsetY, verticalOffset);
+
+        gl.disable(gl.DEPTH_TEST);
+        gl.depthMask(false);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.uniform1f(locations.glow, 0);
+        gl.drawArrays(gl.POINTS, 0, scene.length / 6);
+
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+        gl.depthMask(true);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.uniform1f(locations.glow, 1);
+        gl.drawArrays(gl.POINTS, 0, scene.length / 6);
+      }
+
+      function setPaused(nextState) {
+        isPaused = nextState;
+        pauseButton.setAttribute("aria-label", isPaused ? "继续动画" : "暂停动画");
+        pauseButton.setAttribute("aria-pressed", String(isPaused));
+        pauseButton.title = isPaused ? "继续动画（空格）" : "暂停动画（空格）";
+        pauseIcon.innerHTML = isPaused
+          ? '<path d="M5.5 3.8 14 9l-8.5 5.2V3.8Z"></path>'
+          : '<path d="M6 4.2v9.6M12 4.2v9.6"></path>';
+      }
+
+      function toggleFullscreen() {
+        if (document.fullscreenElement) {
+          document.exitFullscreen?.();
+        } else {
+          document.documentElement.requestFullscreen?.();
+        }
+      }
+
+      function dismissHint() {
+        if (hintDismissed) return;
+        hintDismissed = true;
+        window.setTimeout(() => hint.classList.add("is-hidden"), 500);
+      }
+
+      pauseButton.addEventListener("click", () => setPaused(!isPaused));
+      fullscreenButton.addEventListener("click", toggleFullscreen);
+
+      treeCanvas.addEventListener("pointerdown", (event) => {
+        isDragging = true;
+        pointerX = event.clientX;
+        dragVelocity = 0;
+        treeCanvas.classList.add("is-dragging");
+        treeCanvas.setPointerCapture?.(event.pointerId);
+        dismissHint();
+      });
+
+      treeCanvas.addEventListener("pointermove", (event) => {
+        if (!isDragging) return;
+        const movement = event.clientX - pointerX;
+        pointerX = event.clientX;
+        const change = movement * 0.0052;
+        dragOffset += change;
+        dragVelocity = change;
+      });
+
+      function endDrag(event) {
+        if (!isDragging) return;
+        isDragging = false;
+        treeCanvas.classList.remove("is-dragging");
+        treeCanvas.releasePointerCapture?.(event.pointerId);
+      }
+
+      treeCanvas.addEventListener("pointerup", endDrag);
+      treeCanvas.addEventListener("pointercancel", endDrag);
+      treeCanvas.addEventListener("dblclick", toggleFullscreen);
+
+      window.addEventListener("keydown", (event) => {
+        if (event.target.closest?.("button, a, input, textarea, select, [contenteditable=true]")) return;
+        if (event.code === "Space") {
+          event.preventDefault();
+          setPaused(!isPaused);
+        }
+        if (event.key.toLowerCase() === "f") {
+          toggleFullscreen();
+        }
+      });
+
+      document.addEventListener("fullscreenchange", () => {
+        fullscreenButton.setAttribute(
+          "aria-label",
+          document.fullscreenElement ? "退出全屏" : "进入全屏"
+        );
+      });
+
+      document.addEventListener("visibilitychange", () => {
+        lastFrameTime = performance.now();
+      });
+
+      window.addEventListener("resize", resize, { passive: true });
+
+      function animate(now) {
+        const delta = Math.min((now - lastFrameTime) / 1000, 0.05);
+        lastFrameTime = now;
+
+        if (!isPaused) {
+          rotation += delta * (reducesMotion ? 0.08 : 0.27);
+          if (!isDragging) {
+            dragOffset += dragVelocity;
+            dragVelocity *= 0.92;
+            if (Math.abs(dragVelocity) < 0.00001) dragVelocity = 0;
+          }
+        }
+
+        drawScene();
+        drawSnow(delta);
+        window.requestAnimationFrame(animate);
+      }
+
+      resize();
+      setPaused(reducesMotion);
+      window.setTimeout(dismissHint, 6500);
+      window.requestAnimationFrame(animate);
+    })();
+  </script>
+</body>
+</html>
